@@ -53,11 +53,11 @@ FINANCIAL_STORY_STYLE = """
 
 “金融巨子”的独立叙事配方：吸收优秀中文财经内容的两类长处，但绝不模仿任何具体创作者的口头禅、固定句式、人设、自称或标志性表达。
 
-第一类长处，是把复杂机制翻译成普通人的利益故事。先指出谁想得到什么、谁在转嫁成本、谁最终承担风险，再用一个贴近生活而且准确的类比拆开机制。允许克制吐槽，但笑点必须落在利益错位、荒诞规则或市场的反常反应上，不能拿事实准确性换段子。每篇最多一至三处观察式幽默；禁止网络梗大礼包、强行抖机灵、嘲讽普通投资者，以及复制任何创作者的成名梗。
+把复杂机制拆成具体动作与成本，让观众看见谁收钱、付钱、借钱、涨价或关店。幽默只在证据支持的逻辑矛盾处自然出现，不设数量，不编造动机，不复制创作者原句。
 
-第二类长处，是把当天行情放回更大的资本故事。交代关键玩家、各自筹码、现实约束与必要的历史坐标，让观众理解钱为什么这样流、价格为什么此时动、这次与历史上的相似事件究竟哪里相同、哪里不同。宏大叙事只能从具体证据长出来，禁止空喊时代、格局、资本、周期或历史车轮。
+交代关键玩家的动作与约束，必要时用有来源的历史比较解释价格，不空喊资本、周期与格局。
 
-正文使用“双发动机”推进。叙事发动机不断制造具体问题：眼前发生了什么怪事，谁最先行动，他为什么偏偏此时行动，哪个市场没有按常识走；解释发动机紧跟着用最少的术语回答。每解释清一层，必须带出一个新的矛盾、利益变化或价格信号，推动观众进入下一层。不要先讲大段背景再分析，也不要连续堆知识点；背景只在故事需要它的那一刻出现。
+正文用连续解释推进：上一段动作产生的后果、尚未解释的数字或当事人的下一步，成为下一段入口。不强制制造新矛盾。不按第一、第二、第三或一是、二是、三是报分析点，不用三个原因或三个层面换皮。数字解释业务问题，不成排宣读指标；条款、排名、日期和季度可正常保留。
 
 把机构、政府、央行和资金写成“有目标、有筹码、有约束的行动者”，但不得虚构心理活动。可以依据证据说某类资金面临再平衡、止损、汇率对冲或业绩压力，不能凭空说“华尔街慌了”“主力偷偷布局”“资本早有预谋”。
 
@@ -127,22 +127,14 @@ def normalize_oral_paragraphs(text, target=190, hard_limit=230):
 def _closing_actions(text):
     ending = re.sub(r"\s+", "", text)[-420:]
     return {
-        "like": "点赞" in ending,
+        "like": bool(re.search(r"点赞|点(?:一|一下|个|个小)?赞|给.{0,6}一个赞", ending)),
         "follow": bool(re.search(r"(?:关注.{0,10}(?:金融巨子|账号|我)|(?:金融巨子|这个账号).{0,8}关注|点个关注|记得关注)", ending)),
     }
 
 
 def ensure_closing_cta(text):
-    """Repair the existing CTA without appending a second complete ending."""
+    """Preserve wording; only remove a proven duplicate legacy fallback."""
     clean = text.strip()
-
-    # “点个赞” already expresses the requested action. Normalize the words in
-    # place so the literal delivery check passes instead of appending a second
-    # like/follow/continuation block.
-    tail_start = max(0, len(clean) - 700)
-    head, tail = clean[:tail_start], clean[tail_start:]
-    tail = re.sub(r"点(?:一|一下|个)赞", "点赞", tail)
-    clean = head + tail
 
     # Remove the legacy fallback when a preceding, complete CTA already exists.
     fallback = "如果这期分析对你有帮助，记得点赞、关注金融巨子，咱们下期继续聊最新的市场变化。"
@@ -151,20 +143,7 @@ def ensure_closing_cta(text):
         if all(_closing_actions(prefix).values()):
             clean = prefix
 
-    actions = _closing_actions(clean)
-    if all(actions.values()):
-        return clean
-
-    # Add only the missing action instead of duplicating actions the model has
-    # already written. A fully absent CTA still receives one compact fallback.
-    if not any(actions.values()):
-        return clean + "\n\n觉得有帮助，记得点赞、关注金融巨子。"
-    additions = []
-    if not actions["like"]:
-        additions.append("认可今天这个拆解的朋友，请给这期内容点赞。")
-    if not actions["follow"]:
-        additions.append("也欢迎关注金融巨子，我会继续拆解最新财经热点背后的资金逻辑。")
-    return clean + "\n\n" + "".join(additions)
+    return clean
 
 
 def delivery_problems(text):
@@ -202,17 +181,23 @@ def delivery_problems(text):
     if len(ai_connectors) >= 5:
         problems.append("AI常用转折和对称句式重复过多")
     ending = re.sub(r"\s+", "", text)[-420:]
-    if "点赞" not in ending:
+    if not _closing_actions(text)["like"]:
         problems.append("结尾没有直接请观众点赞")
     if not re.search(r"(?:关注.{0,10}(?:金融巨子|账号|我)|(?:金融巨子|这个账号).{0,8}关注|点个关注|记得关注)", ending):
         problems.append("结尾没有直接请观众关注并说明继续跟踪的理由")
-    if len(re.findall(r"点赞|点(?:一|一下|个)赞", ending)) > 1:
+    if len(re.findall(r"点赞|点(?:一|一下|个|个小)?赞|给.{0,6}一个赞", ending)) > 1:
         problems.append("结尾重复引导点赞")
     if len(re.findall(r"关注(?:金融巨子|账号|我)|关注.{0,8}(?:金融巨子|账号|我)", ending)) > 1:
         problems.append("结尾重复引导关注")
     if re.search(r"(?:你|大家).{0,12}(?:持有|成本价|买入|卖出|加仓|减仓|抄底|上车)", ending):
         problems.append("结尾互动在询问观众持仓或买卖计划")
     return problems
+
+
+def has_outline_enumeration(text):
+    """Detect spoken outline labels, preserving dates, ranks and quarters."""
+    labels = re.findall(r"(?:^|[\n。！？；])\s*(?:第(?:[一二三四五六七八九十]+|\d+)(?:步|点|项|条|个(?:原因|方面|问题|信号|观察点|步骤))\s*[、，,:：]?|第[一二三四五六七八九十]+[、，,:：]|[一二三四五六七八九十]是[、，,:：]?|首先[、，,:：]|其次[、，,:：]|最后[、，,:：])", text)
+    return len(labels) >= 2
 
 
 def opening_performance_problems(text):
@@ -401,7 +386,7 @@ def generate_script(request_data):
         f"{fresh_fact_corpus or '空：当前没有包含正文摘要与可信发布时间的近期原始证据。'}\n"
         f"已排除的无日期、过期或日期冲突来源：{json.dumps(rejected_fact_sources, ensure_ascii=False)}\n\n"
         "【当前已经选定的包装承诺】\n"
-        "这一部分决定正文开头，优先级高于证据池中其他可用事实。第一段必须从这里锁定的Hook与核心矛盾入场，不能擅自换成另一条涨跌、日期或纪录；异常之后须在前220个汉字内给出一句有因果方向的核心判断，但不要一次剧透全部证据。\n"
+        "开头兑现当前标题与包装承诺，不能换成另一事件。尽快说清事件及主要解释，不按固定字数窗口补句；如果标题承诺多个问题，逐一回答但用连续口播衔接，不朗读提纲序号。\n"
         f"标题：{packaging.get('title', topic)}\n"
         f"Hook方向：{packaging.get('hook', '')}\n"
         f"核心矛盾：{packaging.get('conflict', '')}\n"
@@ -419,11 +404,23 @@ def generate_script(request_data):
     try:
         receipts = []
         current_skill = WRITING_SKILL_PATH.read_text(encoding="utf-8") if WRITING_SKILL_PATH.is_file() else ""
+        style_reference = WRITING_SKILL_PATH.parent / "references" / "conversational-finance.md"
+        if style_reference.is_file():
+            current_skill += "\n\n" + style_reference.read_text(encoding="utf-8")
         brief += "\n\n当前表达规则覆盖旧底稿中的人称配额与旧口语示例：不要求开头出现咱们，不要求至少两次我；删除空转的分析引导语，直接讲具体事实、动作及其理由。终审优先局部修正事实、逻辑断口和难读句，保留已经自然的表达，不为统一风格重写好句。"
         writer_system = WRITER_SYSTEM + "\n\n以下是本项目当前生效的口播稿 Skill，逐条执行：\n" + current_skill
         reviewer_system = REVIEWER_SYSTEM + "\n\n以下是本项目当前生效的口播稿 Skill，逐条终审：\n" + current_skill
         finalizer_system = FINALIZER_SYSTEM + "\n\n以下是本项目当前生效的口播稿 Skill，逐条修复：\n" + current_skill
         brief += "\n\n当前结构规则覆盖旧底稿和动态策略中的叙事配额：开头说清事件和听下去的理由、中间讲透问题、结尾收住并点赞关注一次。其余动作按需要选用，无固定时间字数窗口，不因缺项重写全文。"
+        closing_style = "\n收尾用自然请求，允许点个赞、点个关注等表达，不要求连续出现点赞二字。不要写如果本期把某逻辑讲透了、如果我说明白了等自我验收和自夸铺垫；不要用分号接孤立的点赞、关注命令。分析收住后短短邀请即可，不复述整段选题，不强求宏大关注理由。措辞随语境变化，不套固定结尾。"
+        writer_system += closing_style
+        reviewer_system += closing_style
+        finalizer_system += closing_style
+        brief += closing_style
+        narration_style = "\n验证条件同样属于口播，不写第一步、第二步、第三步或第一个信号等观察清单。按本题证据讲清哪些疑问尚未解决，必要时串起其关系；并列事项可以自然并列，不编造因果，也不用数字路标。不强行以接下来要看三件事收尾。"
+        writer_system += narration_style
+        reviewer_system += narration_style
+        brief += narration_style
         client = openai.OpenAI(
             api_key=api_key,
             base_url="https://api.deepseek.com",
@@ -434,7 +431,14 @@ def generate_script(request_data):
         final_script = completion(client, model, reviewer_system, f"{brief}\n\n主笔草稿：\n{draft}", receipts)
         final_script = ensure_closing_cta(normalize_oral_paragraphs(extract_script(final_script)))
         stages = ["主笔创作", "独立终审编辑"]
+        if has_outline_enumeration(final_script):
+            final_script = completion(client, model, reviewer_system,
+                f"{brief}\n\n待编辑正文：\n{final_script}\n\n正文仍在逐项报提纲。仅改相关段落的连接：围绕已有证据，用动作、后果或同一业务问题衔接，不能只删序号，不能补造因果。保留事实、判断、自然好句和完整收尾。输出完整正文。", receipts)
+            final_script = ensure_closing_cta(normalize_oral_paragraphs(extract_script(final_script)))
+            stages.append("提纲式转场局部编辑")
         problems = opening_performance_problems(final_script) + delivery_problems(final_script) + factual_number_problems(final_script, topic_context) + community_usage_problems(final_script)
+        if has_outline_enumeration(final_script):
+            problems.append("仍有连续提纲式序号，建议局部编辑转场")
         return {
             "ok": True,
             "script": final_script,

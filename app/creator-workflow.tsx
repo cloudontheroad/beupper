@@ -381,7 +381,7 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
     { label: "避免AI腔排比否定", ok: !/不是[^。]{0,25}不是[^。]{0,25}而是/.test(script) },
     { label: "段落形成自然留存节奏", ok: script.split(/\n\s*\n/).filter(Boolean).length >= 6 },
     { label: "避免连续套路式设问", ok: (script.match(/？/g) || []).length <= 3 },
-    { label: "结尾直接引导点赞和关注", ok: /点赞/.test(script.replace(/\s/g, "").slice(-420)) && /(?:关注.{0,10}(?:金融巨子|账号|我)|(?:金融巨子|这个账号).{0,8}关注|点个关注|记得关注)/.test(script.replace(/\s/g, "").slice(-420)) },
+    { label: "结尾自然邀请点赞和关注", ok: /点赞|点(?:一|一下|个|个小)?赞|给.{0,6}一个赞/.test(script.replace(/\s/g, "").slice(-420)) && /(?:关注.{0,10}(?:金融巨子|账号|我)|(?:金融巨子|这个账号).{0,8}关注|点个关注|记得关注)/.test(script.replace(/\s/g, "").slice(-420)) },
   ];
   const oralWarningCount = oralChecks.filter((item) => !item.ok).length;
 
