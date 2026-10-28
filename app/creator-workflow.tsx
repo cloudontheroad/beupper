@@ -162,8 +162,8 @@ function coverDirectionForPackage(selected: any) {
   return {
     archetype: questionLed ? "氛围纪录型、主体主导" : "财经周刊型、大字主导",
     visualHierarchy: questionLed
-      ? "主视觉是唯一第一落点，主锤字是紧随其后的第二落点；二者不能同样大。"
-      : "主锤字本身就是唯一第一落点，主视觉退为一个清晰但次一级的证据符号。",
+      ? "选择让本期点击问题最易识别的第一落点。主体照片辨识度不足时由文字主导，不能因为是问句就把文字降成小字；避免多个元素争抢注意。"
+      : "优先让核心判断清楚可读，主视觉解释或强化同一矛盾，不凭固定风格压过点击问题。",
     emotion: riskLed ? "危险正在逼近的压迫感" : opportunityLed ? "资金突然转向带来的兴奋与不安并存" : "旧共识被打破的紧迫和疑问",
     signalColor: riskLed ? "警报红" : opportunityLed ? "克制金" : "冷白",
   };
@@ -358,15 +358,15 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
         ? `本题核心事实明确指向具名真实人物“${selected.namedPerson}”。只允许出现这一位人物，并且必须以经过验证的真实参考图为身份依据；保留可识别面部特征，禁止虚构另一张脸、替身、随从、群众或第二个人。`
         : "本题不是人物主题。画面绝对禁止出现任何人类、脸、五官、头部、身体、手、人物剪影、背影、群众、人偶、雕塑人像、微缩小人、假人模特和任何类人轮廓。即使参考素材里带有人物，也必须完全删除人物，只保留与事件相关的非人物实体、环境、材质或价格张力。不得用一个没有身份的AI假人充当财经主题。";
     setCoverPrompt(
-      `为一条面向中文投资者的财经视频设计高点击封面。观众在信息流里只有零点五秒：先认出话题对象，再感到“${direction.emotion}”，最后被一个没有在标题里说完的信息缺口拉住。封面不是新闻摘要，也不是把所有市场元素摆上桌。\n\n` +
-      `本期标题是：“${selected.title}”。不要把整句标题照搬到画面，但其中准确主体名必须保留在封面文字中。封面既要有主体识别，也要有本期钩子，脱离标题仍能独立阅读。包装分工参考“${selected.coverMode}”；如旧方案要求只保留情绪、不重复主体名，以本次主体识别规则为准。\n\n` +
+      `为一条面向中文投资者的财经视频设计高点击封面。观众在信息流里只有零点五秒：先认出话题对象，再感到“${direction.emotion}”，被本期最具体、最想知道答案的问题拉住。封面不是新闻摘要，也不是把所有市场元素摆上桌。\n\n` +
+      `本期标题是：“${selected.title}”。封面以准确主体名加最强点击问题或判断独立成立；标题后半句更有吸引力就直接使用，允许重复标题中的提问与关键数字，不为互补改成弱口号。包装分工参考“${selected.coverMode}”，若旧方案要求不重复标题或只留情绪，以本次点击动机及主体识别规则为准。最终完整文字以本次生图指令末尾确认的文案为准，不自行换回旧钩子。\n\n` +
       `先认领这张图的物种：${direction.archetype}。${direction.visualHierarchy}本期最强矛盾是“${selected.conflict}”，把它压成一个一眼能认出的视觉锤：“${selected.visual}”。主体轮廓要完整、硬朗、有真实材质，不能溶进背景。除非第二元素能直接构成矛盾，否则只保留一个主体。\n\n` +
       `系列审美基因固定为“高压财经调查纪录片 × 国际商业周刊封面”：石墨黑到深海军蓝的低饱和底色，硬切的电影级定向光，真实纸张或金属的细微颗粒，锐利边缘，高明暗反差，紧凑的编辑排版。只使用一种信号色——${direction.signalColor}——并把它集中在视觉锤或关键文字上，不能全屏染色。质感必须权威但不冷淡，紧张但不廉价；避免塑料高光、泛滥霓虹、通用AI科技蓝和模板化新闻海报。每期只换主视觉与主锤字，构图逻辑、材质、字体气质和色彩纪律保持系列一致。不要出现账号名、Logo、角标或水印。\n\n` +
-      `封面必须独立于视频标题可识别，抖音主页旧作品网格可能没有标题。确认的封面文案为：“${selected.cover}”。文字必须同时包含准确主体名与本期钩子，最多两行，作为一个清晰排版组。主体名可以单独一行，也可融入钩子，必须明显可读，不能缩成角标或用Logo、照片代替。若上述旧文案缺主体，必须从本次选题“${topic}”、确认标题“${selected.title}”与关键词“${selected.keyword}”确定准确公司简称、人名、资产或具体行业政策对象，补入主体名，再保留原钩子；不添加没有依据的主体。完整文案通常6至16字，钩子四至八字优先，不为字数限制删主体。使用紧凑的中文黑体，逐字正确、笔画完整；不加其他宣传文字或装饰标签。文字和视觉主体之间留出负空间。遮住视频标题仍要知道讲谁、讲什么。\n\n` +
-      `情绪必须先由主视觉、光影和信号色成立，不能只靠读字。不要用“震惊脸”、廉价爆炸、金币雨或夸张符号替代真实冲突。底图只负责建立环境和纵深，细节一律退后；如果缩小后出现两个视觉中心，删除较弱的那个。\n\n` +
+      `封面必须独立于视频标题可识别，抖音主页旧作品网格可能没有标题。原包装候选文案为：“${selected.cover}”，仅供理解，不是最终文字。文字必须同时包含准确主体名与本期钩子，最多两行，作为一个清晰排版组。主体名可以单独一行，也可融入钩子，必须明显可读，不能缩成角标或用Logo、照片代替。若上述旧文案缺主体，必须从本次选题“${topic}”、确认标题“${selected.title}”与关键词“${selected.keyword}”确定准确公司简称、人名、资产或具体行业政策对象，确定主体，点击钩子以本次模型确认结果为准，不强留原钩子；不添加没有依据的主体。完整文案通常6至16字，钩子四至八字优先，不为字数限制删主体。使用紧凑的中文黑体，逐字正确、笔画完整；不加其他宣传文字或装饰标签。文字和视觉主体之间留出负空间。遮住视频标题仍要知道讲谁、讲什么。\n\n` +
+      `主视觉、光影和文字共同强化同一个点击理由；允许文字主导，不强制观众先感受情绪再读字。不要用“震惊脸”、廉价爆炸、金币雨或夸张符号替代真实冲突。底图只负责建立环境和纵深，细节一律退后；如果缩小后出现两个视觉中心，删除较弱的那个。\n\n` +
       `${subjectConstraint}\n` +
       `所有封面一律禁止地图、旗帜、国徽、虚假新闻截图、密集K线、坐标轴、图例、微小数字、多图拼贴、多标志、赛博界面、金币雨、牛熊雕像、外边框和平台界面。除非上文明确批准唯一具名真实人物，否则同时禁止任何人形元素。如果使用图表，只能用一个极简的方向形状传递情绪，不能承担具体数据展示。\n\n` +
-      `出图前把封面缩小到手机信息流里的指甲盖大小检查：话题能否认出，第一落点是否唯一，主锤字是否逐字完整，情绪是否在读字之前成立，标题与封面是否互补。任何一项不成立，只能删元素、放大第一落点、扩大负空间或增强局部对比，不能继续堆信息。`
+      `按跨平台共用、标题可能不可见的场景复核：缩成主页网格后，主体名能否读清、本期问题或判断是否具体、观众为何想点是否明确、本次确认文字是否完整。标题重复不扣分，互补不作为合格条件。视觉与排版服务点击问题，不能为了氛围弱化文字；放不下先简化视觉和修饰，不删主体或核心疑问。`
     );
   }, [currentPackages, packageIndex, topic]);
 
@@ -583,8 +583,19 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
     return await prepareReference(material);
   }
 
-  async function generateCover(format: "landscape" | "portrait", referenceImage: string) {
+  async function generateCover(format: "landscape" | "portrait", referenceImage: string, confirmedCopy?: { subject: string; copy: string }) {
     if (!poeApiKey.trim()) throw new Error("请先填写 Poe API Key。");
+    let copy = confirmedCopy;
+    if (!copy) {
+      const response = await fetch(apiUrl("/api/cover-copy"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: deepseekApiKey, topic, title: selectedPackage.title, keyword: selectedPackage.keyword, cover: selectedPackage.cover }),
+      });
+      const payload = await readJsonResponse(response, "封面主体文案确认");
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "封面主体确认失败");
+      copy = payload;
+    }
+    const textOverride = `\n\n【本次最终文字指令，覆盖前文及历史提示词中所有文字要求】主体名必须出现：${copy!.subject}。画面完整文字逐字使用：${JSON.stringify(copy!.copy)}。只排这些字，最多两行，主体名必须明显可读。前文若要求只写旧钩子或不许补主体，一律作废。两行文字全部收进本画幅文字安全框，放不下就缩字号，不得删主体或移出安全框。`;
     const aspectRatio = format === "landscape" ? "4:3" : "3:4";
     const layoutRules = format === "portrait"
       ? `这是3:4竖版信息流封面，必须从零按纵向空间重新设计，绝不能把横版裁成竖版。纵向视线顺序为“安全区内的主锤字—中部唯一主视觉—底部纯背景缓冲区”。主锤字禁止放在画面顶端：文字框上沿必须从画布高度22%以下开始，文字框整体只能位于高度22%至44%的带状区域；画布顶部0%至20%必须保持为没有文字、数字、标点和主体关键轮廓的纯背景缓冲带。主体位于中部并保持完整轮廓。文字最多两行，每行在水平和垂直方向都完整居中；短句优先一行，放不下时均衡拆成两行并主动缩小字号，绝不允许任何一个汉字贴边或被裁。不要把横版的左右分栏硬挤成上下两块。`
@@ -605,7 +616,7 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
         referenceImage,
         allowPerson: selectedPackage.visualSubjectType === "named_real_person" && Boolean(selectedPackage.namedPerson?.trim()),
         namedPerson: selectedPackage.namedPerson || "",
-        prompt: `${coverPrompt}\n\n本次只生成${format === "portrait" ? "竖版" : "横版"}，目标画幅为 ${aspectRatio}。${layoutRules}\n${safeAreaRules}\n背景必须做满整个画布，但所有有意义的信息都必须收进安全框。禁止文字、头部、手部、产品边缘或主体关键部件贴边、出血、越界或被截断。即使平台从四边轻微裁切，主视觉和主锤字仍必须完整。${format === "portrait" ? "最终出图前必须做文字边界复核：从画布顶部向下20%的区域内不得出现任何文字像素；若主锤字、描边或阴影触碰该区域，重新排版并缩小字号，不能输出越界版本。此条优先级高于前文任何关于文字位置的描述。" : ""}`,
+        prompt: `${coverPrompt}\n\n本次只生成${format === "portrait" ? "竖版" : "横版"}，目标画幅为 ${aspectRatio}。${layoutRules}\n${safeAreaRules}\n背景做满画布，全部有意义的信息必须在安全框内。${textOverride}`,
       }),
     });
     const payload = await readJsonResponse(response, "封面生成");
@@ -619,12 +630,22 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
     setCoverError("");
     setCoverStage("正在搜索并验证主题参考图…");
     try {
+      activeStage = "确认本期主体与完整封面文案";
+      setCoverStage("正在确认主体名与封面文字…");
+      const copyResponse = await fetch(apiUrl("/api/cover-copy"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: deepseekApiKey, topic, title: selectedPackage.title, keyword: selectedPackage.keyword, cover: selectedPackage.cover }),
+      });
+      const confirmedCopy = await readJsonResponse(copyResponse, "封面主体文案确认");
+      if (!copyResponse.ok || !confirmedCopy.ok) throw new Error(confirmedCopy.error || "主体确认失败");
+      setCoverPrompt((previous) => `${previous.replace(/\n\n【本次已确认封面文字】[\s\S]*$/, "")}\n\n【本次已确认封面文字】\n${confirmedCopy.copy}\n以上完整文字覆盖历史文字限制，主体名不得省略。`);
+      activeStage = "搜索并验证主题参考图";
       const { material, referenceImage } = await selectCoverMaterial();
       activeStage = "上传参考图并生成横版封面";
       setCoverStage(`已选用“${material.title}”，准备上传参考图…`);
-      await generateCover("landscape", referenceImage);
+      await generateCover("landscape", referenceImage, confirmedCopy);
       activeStage = "生成竖版封面";
-      await generateCover("portrait", referenceImage);
+      await generateCover("portrait", referenceImage, confirmedCopy);
       setCoverStage("双画幅封面已生成并保存");
       notify(`已自动选用“${material.title}”作为主题素材，并生成双画幅封面`);
     } catch (error) {

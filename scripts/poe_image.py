@@ -204,7 +204,9 @@ def persist_image(image_url, request_id="", project_id="", cover_format=""):
     safe_request = re.sub(r"[^A-Za-z0-9_-]+", "", request_id or "")[:36]
     safe_project = re.sub(r"[^A-Za-z0-9_-]+", "-", project_id or "").strip("-")[:80]
     safe_format = cover_format if cover_format in ("landscape", "portrait") else ""
-    filename = f"{safe_project}-{safe_format}{extension}" if safe_project and safe_format else f"{safe_request + '-' if safe_request else ''}{uuid.uuid4().hex}{extension}"
+    # A fresh URL per generation prevents browser/proxy caches from displaying
+    # an older cover after replacing the file for the same project and format.
+    filename = f"{safe_project}-{safe_format}-{uuid.uuid4().hex[:12]}{extension}" if safe_project and safe_format else f"{safe_request + '-' if safe_request else ''}{uuid.uuid4().hex}{extension}"
     (COVER_DIR / filename).write_bytes(content)
     (PUBLIC_COVER_DIR / filename).write_bytes(content)
     if safe_project and safe_format:

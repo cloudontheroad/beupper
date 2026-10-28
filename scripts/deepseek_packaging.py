@@ -19,7 +19,7 @@ SYSTEM = """你是“金融巨子”的财经视频包装总编。你的工作�
 严格执行本次请求附带的当前Skill。"""
 
 SYSTEM += """
-封面用于不显示视频标题的抖音主页与历史作品网格。cover字段必须输出准确主体名加本期钩子的完整文字，最多两行，通常6至16字。主体写当前公司的常用简称、具名人物名、资产名或具体行业政策对象，不用照片或Logo代替文字。主体名可以重复标题关键词；钩子仍应互补。不得只输出无主体的情绪口号。旧研究底稿的4至8字或不重复标题要求不得覆盖主体识别要求。
+封面用于不显示视频标题的抖音主页与历史作品网格。cover字段必须输出准确主体名加本期钩子的完整文字，最多两行，通常6至16字，以完整意思和可读性为先。比较标题最强提问（尤其后半句）、其短口语版与独立钩子，选点击动机最具体且正文能兑现的一句。标题提问更好就直接采用加主体名，允许重复标题；不为互补另造弱口号，不把提问压成新闻摘要、任务目录或不顺口的电报体。事实准确、主体可识别是底线，不用照片或Logo代替文字。旧研究底稿的4至8字或不重复标题要求不得覆盖这些规则。
 """
 
 
@@ -112,6 +112,8 @@ def generate_packaging(request_data):
             max_retries=2,
         )
         current_skill = SKILL_PATH.read_text(encoding="utf-8") if SKILL_PATH.is_file() else ""
+        cover_policy = SKILL_PATH.parent.parent / "design-financial-video-cover" / "references" / "placement-policy.md"
+        current_skill += "\n\n以下封面展示场景与点击选择规则优先于旧包装分工：\n" + cover_policy.read_text(encoding="utf-8")
         messages = [
             {"role": "system", "content": SYSTEM + "\n\n以下是当前生效的包装Skill：\n" + current_skill},
             {"role": "user", "content": brief},
