@@ -238,7 +238,7 @@ export default function Home() {
               return (
                 <div className="pipe" key={step.label}>
                   <div className={liveDone ? "pipeCircle done" : "pipeCircle"}>{liveDone ? "✓" : i + 1}</div>
-                  <b>{step.label}</b><span>{i === 0 && baiduConnected ? "百度 WebSearch 已验证" : step.status}</span>
+                  <b>{step.label}</b><span>{i === 0 && baiduConnected ? "搜索数据源已验证" : step.status}</span>
                   {i < pipeline.length - 1 && <div className={liveDone ? "line done" : "line"} />}
                 </div>
               );
@@ -249,7 +249,7 @@ export default function Home() {
         <section className="engineCard">
           <div className="sectionTitle">
             <div><p className="eyebrow">TOPIC ENGINE V3</p><h2>先形成事件全集，再连接行情与根因</h2></div>
-            <span className="engineVersion">{liveScan ? `实时扫描完成 · ${new Date(liveScan.scannedAt).toLocaleTimeString("zh-CN", {hour: "2-digit", minute: "2-digit"})}` : baiduConnected ? "百度 WebSearch 已接入 · 等待扫描" : "评分规则已配置 · 数据源待接入"}</span>
+            <span className="engineVersion">{liveScan ? `实时扫描完成 · ${new Date(liveScan.scannedAt).toLocaleTimeString("zh-CN", {hour: "2-digit", minute: "2-digit"})}` : baiduConnected ? "搜索数据源已接入 · 等待扫描" : "评分规则已配置 · 数据源待接入"}</span>
           </div>
           <div className="engineFlow">
             <span><b>01</b>覆盖矩阵<small>市场·政策·公司·产业·跨资产</small></span>
@@ -278,7 +278,7 @@ export default function Home() {
               <span className="demoLabel">{liveScan ? `百度实时扫描 · ${liveScan.queryCount} 组查询` : "等待真实扫描"}</span>
             </div>
             <div className="topicList">
-              {!liveScan && <div className="emptyTopics"><b>先验证百度 WebSearch，再扫描今日热点</b><span>扫描前不展示静态选题，避免把演示数据当成实时判断。</span></div>}
+              {!liveScan && <div className="emptyTopics"><b>选择并验证搜索数据源，再扫描今日热点</b><span>扫描前不展示静态选题，避免把演示数据当成实时判断。</span></div>}
               {liveScan && topics.length === 0 && <div className="emptyTopics"><b>本轮没有形成可理解的财经事件</b><span>请在召回诊断中检查时间过滤、未分类证据和语义引擎回执。</span></div>}
               {topics.map((topic, i) => (
                 <button className={`topic ${selected === topic.id ? "selected" : ""}`} key={topic.id} onClick={() => setSelected(topic.id)}>

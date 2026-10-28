@@ -1,3 +1,5 @@
+import { scanUsage } from "./scan-usage";
+
 export type SemanticReference = {
   traceId: string;
   title: string;
@@ -116,13 +118,15 @@ async function deepSeekJson(apiKey: string, messages: any[], stage = "JSON生成
     let lastNetworkError = "";
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
+        const usage = scanUsage.getStore();
+        if (usage) { usage.calls += 1; usage.inputCharacters += JSON.stringify(requestMessages).length; }
         response = await fetch("https://api.deepseek.com/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
           signal: AbortSignal.timeout(90_000),
           body: JSON.stringify({
             model: "deepseek-v4-flash", messages: requestMessages, thinking: { type: "disabled" },
-            response_format: { type: "json_object" }, max_tokens: 20000,
+            response_format: { type: "json_object" }, max_tokens: /规划|查询|日历/.test(stage) ? 3000 : /选题/.test(stage) ? 6500 : 14000,
           }),
         });
         if (response.status < 500) break;
@@ -136,6 +140,12 @@ async function deepSeekJson(apiKey: string, messages: any[], stage = "JSON生成
     const text = await response.text();
     let payload: any = {};
     try { payload = text ? JSON.parse(text) : {}; } catch {}
+    const usage = scanUsage.getStore();
+    if (usage && payload.usage) {
+      usage.promptTokens += Number(payload.usage.prompt_tokens || 0);
+      usage.completionTokens += Number(payload.usage.completion_tokens || 0);
+      usage.cachedTokens += Number(payload.usage.prompt_cache_hit_tokens || 0);
+    }
     if (!response.ok) throw new Error(`DeepSeek事件标准化失败：${payload.error?.message || text.slice(0, 300) || response.status}`);
     const content = payload.choices?.[0]?.message?.content;
     if (!content) throw new Error("DeepSeek事件标准化返回空内容");
@@ -191,7 +201,7 @@ export async function standardizeFinancialEvents(apiKey: string, references: Sem
   for (let index = 0; index < chunks.length; index += 1) {
     const compact = chunks[index].map((item) => ({
       evidenceId: item.traceId, title: item.title, summary: item.snippet.slice(0, 320), site: item.site,
-      publishedAt: item.publishedAt, query: item.query, authoritative: item.authoritative, social: Boolean(item.social),
+      publishedAt: item.publishedAt, authoritative: item.authoritative, social: Boolean(item.social),
     }));
     const result = await deepSeekJson(apiKey, [
       { role: "system", content: extractionSystem },
@@ -256,6 +266,20 @@ export async function deriveMarketFollowUpQueries(apiKey: string, references: Se
   return { queries: [...new Set((result.data.queries || []).map(String).map((item: string) => item.trim()).filter(Boolean))].slice(0, 15), receipt: result.receipt };
 }
 
+export async function planScanFollowUps(apiKey: string, references: SemanticReference[]) {
+  if (!references.length) return { queries: [] as string[], companies: [] as any[], receipt: "" };
+  const compact = references.map((item) => ({ id: item.traceId, title: item.title, summary: item.snippet.slice(0, 320), date: item.publishedAt,
+    calendar: /财报日历|业绩发布时间|earnings calendar|reporting before open|after close/i.test(item.query) }));
+  const result = await deepSeekJson(apiKey, [
+    { role: "system", content: "你是实时财经补证编辑。输入已去重。一次完成今日财报公司提取和事件补查规划。只追输入出现的实体，禁止历史公司名单。日历需核对实际披露日，预告不能当正式发布。覆盖美股/A股/港股行情原因、财报与产品经营动作（包括消费同店客流门店）、监管贸易与关键人物新表态。逐事件检查原文、独立交叉验证、本股反应和投资者观点：已有充分材料不再查，只针对缺口生成查询。同一事件最多两条功能不同的补查，不复述原查询，不生成泛宏观查询。兼顾不同市场和事件类型，不按公司名气筛掉消费与经营事件。最多18条查询、6家今日财报公司。每条查询不超过70字符。JSON紧凑输出：{\"queries\":[\"...\"],\"companies\":[{\"name\":\"...\",\"ticker\":\"...\",\"market\":\"...\"}]}。" },
+    { role: "user", content: `当前UTC时间${new Date().toISOString()}，北京时间UTC+8。证据：${JSON.stringify(compact)}` },
+  ], "统一缺口补查规划");
+  return {
+    queries: [...new Set<string>((result.data.queries || []).map(String).map((q: string) => q.trim()).filter(Boolean))].slice(0, 18),
+    companies: Array.isArray(result.data.companies) ? result.data.companies.slice(0, 6) : [], receipt: result.receipt,
+  };
+}
+
 export async function deriveCorporateReleaseFollowUpQueries(apiKey: string, references: SemanticReference[]) {
   const calendarEvidence = references
     .filter((item) => /财报日历|业绩发布时间|earnings calendar|reporting before open|after close/i.test(`${item.query} ${item.title} ${item.snippet}`))
@@ -282,7 +306,7 @@ export async function deriveCorporateReleaseFollowUpQueries(apiKey: string, refe
   return { queries: [...new Set(queries)].slice(0, 18), companies, receipt: result.receipt };
 }
 
-export async function buildCausalAnalysisTopics(apiKey: string, events: any[], strategyProfile: any = {}, stableTopicSkill = "") {
+export async function buildCausalAnalysisTopics(apiKey: string, events: any[], strategyProfile: any = {}, stableTopicSkill = "", supplement = false) {
   if (!events.length) return { topics: [], receipt: "" };
   const compactEvents = events.slice(0, 60).map((event) => ({
     eventId: event.id || event.eventId, title: event.title, summary: event.summary || event.thesis,
@@ -305,7 +329,7 @@ export async function buildCausalAnalysisTopics(apiKey: string, events: any[], s
 只输出JSON：{"topics":[{"title":"具体分析命题","observedEventIds":[],"causalEventIds":[],"mechanism":"原因如何传到价格，不超过120字","causality":"confirmed|strong_hypothesis|possible|unresolved","counterEvidence":"最强反证，不超过80字","verificationSignals":[],"markets":[],"marketImportance":0,"explanatoryPower":0,"evidenceStrength":0,"novelty":0,"confidence":0,"searchDemand":0,"stakeholderConflict":0,"entitySpecificity":0,"investorProximity":0,"timelinessOpportunity":0,"discoveryLane":"search|recommendation|dual"}]}。所有分数0到100，最多输出18个互不重复的分析命题。`;
   const result = await deepSeekJson(apiKey, [
     { role: "system", content: `${system}\n公司财报、业绩预告、经营指引、资本开支，以及新品发布、定价、订单、交付、销量、量产、扩产、中标、召回或停产，都是公司定价事件。消费公司的同店、翻台率、客流、门店开闭、店效、入住率、客单价、票房、提价促销、渠道库存和会员变化也属于公司定价事件，不得被吞进抽象的“消费复苏”。只要事件明确指向一家上市公司，首要选题必须围绕该公司本股：市场原来定价了什么、新动作改变了收入/毛利/需求/竞争的哪项预期、发布前后股价与资金如何反应、价格是否充分反映、后续由哪些经营数字验证。行业、供应链和跨市场外溢只能作为第二层影响，不能取代本股成为标题和核心机制。只有证据显示多家公司同步变化、行业盈利预测被普遍上修或下修时，才可以另建行业级选题。不得因为公司规模大，就自动把单家公司事件改写成行业趋势。\n\n以下是当前稳定选题Skill：${stableTopicSkill}\n\n以下是抖音真实数据形成的最新选题策略，只能在事实、时效和证据硬门之后影响选题构造与排序倾向，不能创造新闻或覆盖事件重要性：${JSON.stringify(strategyProfile?.topicDirectives || [])}` },
-    { role: "user", content: `北京时间${new Date().toISOString()}。从以下事件全集构建因果分析型选题：${JSON.stringify(compactEvents)}` },
+    { role: "user", content: `当前UTC时间${new Date().toISOString()}。${supplement ? "这是未覆盖事件的一次集中补充。每个输入事件各生成一个具体分析题，必须链接该事件ID；公司题标题必须包含对应公司实体。证据不足以构成分析的事件可以不输出，禁止用通用问句凑数。" : "从事件全集构建因果分析型选题。"}标题要围绕本事件的具体经营变量、预期差或利益冲突，不得拼接“本股估值要重算吗”“行情还能延续吗”“市场在重估什么”等可替换后缀。输入：${JSON.stringify(compactEvents)}` },
   ], "因果分析选题生成");
   const list = (value: any) => Array.isArray(value) ? [...new Set(value.map(String).filter(Boolean))] : [];
   const number = (value: any) => Math.max(0, Math.min(100, Number(value) || 0));
