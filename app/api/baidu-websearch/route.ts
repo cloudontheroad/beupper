@@ -412,7 +412,7 @@ async function scanRequest(request: Request) {
         : analysis.title;
       const rawInvestorProximity = Number(analysis.investorProximity || 0);
       const investorProximity = isSingleCompanyCatalyst
-        ? verifiedAudienceSignal ? Math.max(rawInvestorProximity, Math.min(88, 58 + linkedEvents.reduce((sum, event) => sum + (event.socialCount || 0), 0) * 4)) : Math.min(rawInvestorProximity, 45)
+        ? verifiedAudienceSignal ? Math.min(rawInvestorProximity, linkedEvents.some((event) => event.socialCount > 0 || event.marketReaction >= 55) ? 100 : 60) : Math.min(rawInvestorProximity, 45)
         : Math.min(rawInvestorProximity, 50);
       // 模型给出的searchDemand不能代替真实声量。缺少独立来源、社区讨论和
       // 价格反应的单公司题仍可留在事件全集，但在高潜排序中明确降级。

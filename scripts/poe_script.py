@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
+from email.utils import parsedate_to_datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".python_packages"))
 
@@ -209,13 +210,25 @@ def _parse_evidence_time(value):
     raw = str(value or "").strip().replace("Z", "+00:00")
     if not raw:
         return None
+    if re.fullmatch(r"\d{10}(?:\.\d+)?|\d{13}", raw):
+        try:
+            number = float(raw)
+            return datetime.fromtimestamp(number / 1000 if number > 10_000_000_000 else number, timezone.utc)
+        except (ValueError, OverflowError, OSError):
+            return None
+    raw = re.sub(r"[年/]", "-", raw).replace("月", "-").replace("日", "").strip()
+    raw = re.sub(r"\s*(?:北京时间|中国标准时间|CST)\s*$", "+08:00", raw)
     try:
         parsed = datetime.fromisoformat(raw)
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone(timedelta(hours=8)))
         return parsed.astimezone(timezone.utc)
     except ValueError:
-        return None
+        try:
+            parsed = parsedate_to_datetime(raw)
+            return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone(timedelta(hours=8))).astimezone(timezone.utc)
+        except (ValueError, TypeError, OverflowError):
+            return None
 
 
 def _url_intrinsic_date(value):
@@ -229,7 +242,7 @@ def _url_intrinsic_date(value):
         return None
 
 
-def build_fresh_fact_corpus(topic_context):
+def build_fresh_fact_corpus(topic_context, diagnostics=None):
     """Only recent, traceable source text may authorize market numbers."""
     now = datetime.now(timezone.utc)
     accepted = []
@@ -237,16 +250,31 @@ def build_fresh_fact_corpus(topic_context):
     for item in topic_context.get("evidence", []) if isinstance(topic_context, dict) else []:
         if not isinstance(item, dict):
             continue
-        published = _parse_evidence_time(item.get("publishedAt"))
+        raw_time = item.get("publishedAt") or item.get("published_time") or item.get("publish_time") or item.get("date")
+        published = _parse_evidence_time(raw_time)
         intrinsic = _url_intrinsic_date(item.get("url"))
         effective = intrinsic or published
-        if not effective or effective > now + timedelta(hours=2) or now - effective > timedelta(hours=72):
+        reason = ""
+        if item.get("social"):
+            reason = "社区观点不是行情事实源"
+        elif not str(item.get("snippet") or item.get("body") or item.get("content") or "").strip():
+            reason = "缺少证据正文或摘要"
+        elif not str(item.get("url") or "").startswith(("http://", "https://")):
+            reason = "缺少可追溯来源链接"
+        elif not effective:
+            reason = "发布时间缺失或格式无法识别"
+        elif effective > now + timedelta(hours=2):
+            reason = "发布时间在未来"
+        elif now - effective > timedelta(hours=72):
+            reason = "来源已超过72小时"
+        elif intrinsic and published and abs((intrinsic - published).total_seconds()) > 72 * 3600:
+            reason = "链接日期与标注发布时间冲突"
+        if reason:
             rejected.append(item.get("title") or item.get("url") or "无标题证据")
+            if diagnostics is not None:
+                diagnostics.append({"title": item.get("title") or "无标题证据", "url": item.get("url") or "", "publishedAt": raw_time or "", "reason": reason})
             continue
-        if intrinsic and published and abs((intrinsic - published).total_seconds()) > 72 * 3600:
-            rejected.append(item.get("title") or item.get("url") or "日期冲突证据")
-            continue
-        accepted.append(" ".join(str(item.get(key, "")) for key in ("title", "snippet", "publishedAt", "site", "url")))
+        accepted.append(" ".join(str(value) for value in (item.get("title", ""), item.get("snippet") or item.get("body") or item.get("content") or "", effective.isoformat(), item.get("site", ""), item.get("url", ""))))
     return "\n".join(accepted), rejected
 
 
@@ -354,12 +382,14 @@ def generate_script(request_data):
         for item in research if isinstance(item, dict)
     )
     raw_event_context = json.dumps(topic_context, ensure_ascii=False, indent=2)
-    fresh_fact_corpus, rejected_fact_sources = build_fresh_fact_corpus(topic_context)
+    fact_diagnostics = []
+    fresh_fact_corpus, rejected_fact_sources = build_fresh_fact_corpus(topic_context, fact_diagnostics)
     if not fresh_fact_corpus:
         return {
             "ok": False,
             "status": 422,
-            "error": "当前项目没有携带可核验的72小时内原始证据正文与发布时间，已停止写稿。请回到首页重新扫描热点并用新结果开稿；系统不会再让模型凭标题或常识补写行情事实。",
+            "error": "当前项目暂无可用于写稿的72小时内事实证据。" + ("；".join(f"{row['title'][:35]}：{row['reason']}（时间：{row['publishedAt'] or '未提供'}）" for row in fact_diagnostics[:6]) if fact_diagnostics else "项目未携带原始证据列表。") + "。请核对底稿来源；可为当前项目补充近期来源，不必删除项目或重建稿件。社区观点不能代替事实来源。",
+            "evidenceDiagnostics": fact_diagnostics,
         }
     workflow_brief = json.dumps(workflow_context, ensure_ascii=False, indent=2)
     alternative_packaging = json.dumps(packaging_options, ensure_ascii=False, indent=2)

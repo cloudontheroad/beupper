@@ -1,4 +1,5 @@
 "use client";
+import { learnLatestDouyinSnapshot } from "./strategy-learning";
 
 import { useEffect, useState } from "react";
 import { downloadCover, localizeCoverUrl } from "./image-download";
@@ -211,58 +212,14 @@ export function ProjectLibrary({ notify, onEditProject }: { notify: (message: st
       const detailedCount = liveReviews.filter((item: any) => item.detailCollected).length;
       const newest = focus[0];
       const baseMessage = `已读取 ${liveReviews.length} 条作品，其中 ${detailedCount} 条取得逐稿留存明细；本轮重点 ${focus.length} 条${newest ? `，最新《${newest.title}》${newest.views} 播放（${newest.reason}）` : ""}；自动匹配 ${Object.keys(completed).length} 个资产项目。`;
-      const deepseekApiKey = window.localStorage.getItem("financial-titan-deepseek-key") || "";
-      const learningRecords = nextProjects.flatMap((project) => {
-        const review = project.douyinReview;
-        if (!review) return [];
-        return [{
-          projectId: project.id,
-          topic: project.topic || "",
-          title: project.packaging?.title || review.title || "",
-          hook: project.packaging?.hook || "",
-          coreConflict: project.packaging?.conflict || "",
-          research: (project.research || []).map((item: any) => ({ key: item.key, title: item.title, body: String(item.body || "").slice(0, 700) })),
-          scriptOpening: String(project.script || "").slice(0, 1200),
-          scriptLength: String(project.script || "").length,
-          performance: review,
-        }];
-      });
-      if (deepseekApiKey && (learningRecords.length || focus.length)) {
-        try {
-          setDouyinSyncMessage(`${baseMessage} 正在用 DeepSeek 生成本轮策略迭代…`);
-          const previousStrategy = JSON.parse(window.localStorage.getItem("financial-titan-strategy-profile") || "{}");
-          const strategyHistory = JSON.parse(window.localStorage.getItem("financial-titan-strategy-iterations") || "[]");
-          const strategyResponse = await fetch(apiUrl("/api/strategy-iterate"), {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ apiKey: deepseekApiKey, model: "deepseek-v4-pro", records: learningRecords, focus,
-              focusRecords: focus.map((row) => learningRecords.find((record) => String(record.performance?.platformId || record.performance?.id) === row.id)
-                || { title: row.title, performance: liveReviews.find((record: any) => String(record.platformId || record.id) === row.id), projectMatched: false }),
-              previousStrategy, strategyHistory }),
-            signal: AbortSignal.timeout(300_000),
-          });
-          const strategyPayload = await readJsonResponse(strategyResponse, "策略迭代");
-          if (!strategyResponse.ok || !strategyPayload.ok) throw new Error(strategyPayload.error || "DeepSeek 策略迭代失败");
-          const iteration = strategyPayload.iteration;
-          const history = JSON.parse(window.localStorage.getItem("financial-titan-strategy-iterations") || "[]");
-          window.localStorage.setItem("financial-titan-strategy-iterations", JSON.stringify([iteration, ...history].slice(0, 50)));
-          const existingCandidates = JSON.parse(window.localStorage.getItem("financial-titan-promotion-candidates") || "[]");
-          const candidateMap = new Map(existingCandidates.map((item: any) => [item.id, item]));
-          for (const candidate of strategyPayload.promotionCandidates || []) {
-            const existing = candidateMap.get(candidate.id) as any;
-            if (!existing || existing.status === "pending") candidateMap.set(candidate.id, { ...candidate, discoveredAt: iteration.createdAt });
-          }
-          window.localStorage.setItem("financial-titan-promotion-candidates", JSON.stringify([...candidateMap.values()]));
-          window.localStorage.setItem("financial-titan-strategy-profile", JSON.stringify(iteration));
-          window.dispatchEvent(new Event("financial-titan-strategy-updated"));
-          setDouyinSyncMessage(`${baseMessage} DeepSeek 已优先复盘本轮 ${focus.length} 条重点作品，并以 ${iteration.sampleCount} 个匹配项目校验策略。`);
-          notify("抖音数据已保存，新一轮内容策略已生效");
-        } catch (strategyError) {
-          setDouyinSyncMessage(`${baseMessage} 数据已安全保存；本轮策略迭代失败：${strategyError instanceof Error ? strategyError.message : "未知错误"}`);
-          notify("抖音数据已保存，但本轮 DeepSeek 策略复盘未完成");
-        }
-      } else {
-        setDouyinSyncMessage(`${baseMessage}${deepseekApiKey ? " 本轮没有新稿或显著变化，保留原有策略。" : " 配置 DeepSeek Key 后，下次同步将优先复盘新稿与变化稿。"}`);
-        notify(payload.detailComplete ? "抖音逐稿详细数据已保存到对应资产" : "作品列表已保存，但逐稿留存明细未完整返回");
+      try {
+        setDouyinSyncMessage(`${baseMessage} 正在用 DeepSeek 学习最新快照…`);
+        const learned = await learnLatestDouyinSnapshot();
+        setDouyinSyncMessage(`${baseMessage} 已完成策略学习，覆盖 ${learned.iteration.sampleCount} 条真实作品。${learned.promotionWarning || ""}`);
+        notify("最新抖音数据与迭代策略已保存");
+      } catch (error) {
+        setDouyinSyncMessage(`${baseMessage} 数据已保存；策略学习未完成：${error instanceof Error ? error.message : String(error)}。可在策略迭代页重试，无需重新同步。`);
+        notify("数据已保存，策略学习状态请查看策略迭代页");
       }
     } catch (error) {
       setDouyinSyncMessage(error instanceof Error ? error.message : "抖音同步失败");

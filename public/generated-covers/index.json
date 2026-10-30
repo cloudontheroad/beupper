@@ -265,8 +265,27 @@
     "portrait": "/generated-covers/project-1793080607089-portrait.png"
   },
   "project-1793165323303": {
-    "landscape": "/generated-covers/project-1793165323303-landscape-1b84c68a7312.png",
-    "updatedAt": "2026-10-28T08:25:21Z",
-    "portrait": "/generated-covers/project-1793165323303-portrait-052aef36b3c6.png"
+    "landscape": "/generated-covers/project-1793165323303-landscape-dfd6ccfa0909.png",
+    "updatedAt": "2026-10-28T08:41:31Z",
+    "portrait": "/generated-covers/project-1793165323303-portrait-400f39086905.png"
+  },
+  "project-1793244199324": {
+    "landscape": "/generated-covers/project-1793244199324-landscape-c0d827aca9a5.png",
+    "updatedAt": "2026-10-29T03:30:21Z",
+    "portrait": "/generated-covers/project-1793244199324-portrait-1bdac3b55a8e.png"
+  },
+  "project-1793341766208": {
+    "landscape": "/generated-covers/project-1793341766208-landscape-3e18c4eabb09.png",
+    "updatedAt": "2026-10-30T06:33:09Z"
+  },
+  "project-1793340420478": {
+    "landscape": "/generated-covers/project-1793340420478-landscape-8899c6871b67.png",
+    "updatedAt": "2026-10-30T08:21:50Z",
+    "portrait": "/generated-covers/project-1793340420478-portrait-bb6c89860423.png"
+  },
+  "project-1793348738492": {
+    "landscape": "/generated-covers/project-1793348738492-landscape-e9d8bd38c085.png",
+    "updatedAt": "2026-10-30T08:34:50Z",
+    "portrait": "/generated-covers/project-1793348738492-portrait-207f860f687d.png"
   }
 }

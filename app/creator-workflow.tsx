@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { downloadCover, localizeCoverUrl } from "./image-download";
 import { apiUrl, readJsonResponse } from "./api-client";
 import { abstractStrategyProfile, researchStrategySummary } from "./strategy-profile";
+import { socialSearchQueries } from "./social-search-queries";
 
 const defaultTopic = "当前选题尚未锁定";
 
@@ -394,7 +395,7 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
       const response = await fetch(apiUrl("/api/social-search"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ queries: [`${cleanTopic} 投资者讨论 分歧`] }),
+        body: JSON.stringify({ queries: socialSearchQueries(cleanTopic, contextValue) }),
         signal: AbortSignal.timeout(120_000),
       });
       const payload = await readJsonResponse(response, "社区证据采集");
@@ -414,6 +415,10 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
         query: item.query || cleanTopic,
       }));
       const socialEvidence = rawSocialEvidence.filter((item: any) => communityInsightScore(item) >= 2);
+      const failedChannels = Object.entries(payload.channels || {}).filter(([, value]: [string, any]) => value.error && !value.count)
+        .map(([name]: [string, any]) => name === "xueqiu" ? "雪球" : "X");
+      if (failedChannels.length) setSocialRefreshError(`${failedChannels.join("、")}采集失败；本轮仅使用其他成功渠道，不代表该平台没有讨论`);
+      else if (!socialEvidence.length) setSocialRefreshError(rawSocialEvidence.length ? "已取得帖子，但本轮没有通过观点筛选的证据；未新增社区观点" : "接口可用，但本轮检索未取得帖子；未新增社区观点");
       const nextContext = {
         ...contextValue,
         evidence: [...regularEvidence, ...socialEvidence],
@@ -428,13 +433,16 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
         },
       };
       setTopicContext(nextContext);
-      notify(`研究底稿已冻结 ${socialEvidence.length} 条有观点增量的社区证据；过滤 ${rawSocialEvidence.length - socialEvidence.length} 条纯事实播报`);
+      notify(`${failedChannels.length ? `${failedChannels.join("、")}采集失败；` : ""}本轮取得 ${socialEvidence.length} 条观点证据，过滤 ${rawSocialEvidence.length - socialEvidence.length} 条无观点增量帖子`);
       return nextContext;
     } catch (error) {
       const message = error instanceof Error ? error.message : "社区证据采集失败";
       setSocialRefreshError(message);
       notify(`社区证据未能补齐：${message}`);
-      return contextValue;
+      const failedContext = { ...contextValue, socialEvidence: { ...contextValue?.socialEvidence,
+        lastAttemptAt: new Date().toISOString(), lastAttemptError: message } };
+      setTopicContext(failedContext);
+      return failedContext;
     } finally {
       setSocialRefreshing(false);
     }
@@ -836,7 +844,7 @@ export function CreatorWorkflow({ notify, selectedTopic, selectedTopicData, star
           {packagingError && <p className="coverError">{packagingError}</p>}
           <div className="socialEvidencePanel">
             <div><b>社区争议证据</b><span>{topicContext?.socialEvidence?.refreshedAt ? `冻结于 ${new Date(topicContext.socialEvidence.refreshedAt).toLocaleString("zh-CN")}` : "尚未采集"}</span><button className="ghost" disabled={socialRefreshing} onClick={() => void refreshSocialEvidence()}>{socialRefreshing ? "正在刷新…" : "刷新社区证据"}</button></div>
-            {socialRefreshError && <p className="coverError">{socialRefreshError}</p>}
+            {(socialRefreshError || topicContext?.socialEvidence?.lastAttemptError) && <p className="coverError">{socialRefreshError || topicContext.socialEvidence.lastAttemptError}</p>}
             {frozenSocialEvidence.length ? <div className="socialEvidenceList">{frozenSocialEvidence.slice(0, 12).map((item: any, index: number) => <a href={item.url} target="_blank" rel="noopener noreferrer" key={item.url || `${item.title}-${index}`}><i>{item.site || "社区"}</i><span><b>{item.author || "公开用户"}</b><small>{item.snippet || item.title}</small></span><em>↗</em></a>)}</div> : <p>当前项目还没有可用的雪球/X帖子。点击刷新后，采集结果和渠道诊断会保存进本项目；没有证据时，后续模型不得虚构社区观点。</p>}
             {topicContext?.socialEvidence?.channels && <small className="socialEvidenceDiagnostic">原始召回 {topicContext.socialEvidence.rawCount ?? frozenSocialEvidence.length} 条 · 观点证据 {frozenSocialEvidence.length} 条 · 过滤纯事实播报 {topicContext.socialEvidence.discardedObjectiveCount || 0} 条　雪球：{topicContext.socialEvidence.channels.xueqiu?.count || 0} 条{topicContext.socialEvidence.channels.xueqiu?.error ? ` · ${topicContext.socialEvidence.channels.xueqiu.error}` : ""}　X：{topicContext.socialEvidence.channels.twitter?.count || 0} 条{topicContext.socialEvidence.channels.twitter?.error ? ` · ${topicContext.socialEvidence.channels.twitter.error}` : ""}</small>}
           </div>

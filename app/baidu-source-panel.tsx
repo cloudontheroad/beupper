@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiUrl, readJsonResponse } from "./api-client";
 import { abstractStrategyProfile } from "./strategy-profile";
+import { loadScanCache, saveScanCache } from "./scan-cache";
 
 const hotspotPipelineVersion = "multi-source-efficient-v10";
 
@@ -45,16 +46,17 @@ export function BaiduSourcePanel({ notify, onValidated, onScan }: { notify: (mes
     const ok = window.localStorage.getItem(`financial-titan-${savedProvider}-validated`) === "true";
     setValidated(ok);
     onValidated(ok);
-    const saved = window.localStorage.getItem("financial-titan-baidu-last-scan");
-    if (saved) try {
-      const parsed = JSON.parse(saved);
+    let cancelled = false;
+    loadScanCache().then((parsed) => {
+      if (cancelled || !parsed) return;
       if (parsed.pipelineVersion !== hotspotPipelineVersion || parsed.searchProvider !== savedProvider) return;
       const ageMs = Date.now() - new Date(parsed.scannedAt || 0).getTime();
       const stale = !parsed.scannedAt || ageMs > 90 * 60 * 1000;
       setScan(parsed);
       setScanStale(stale);
       if (!stale) onScan(parsed);
-    } catch {}
+    }).catch(() => { /* Scanning remains available if browser storage is disabled. */ });
+    return () => { cancelled = true; };
   }, [onValidated, onScan]);
 
   useEffect(() => {
@@ -109,7 +111,12 @@ export function BaiduSourcePanel({ notify, onValidated, onScan }: { notify: (mes
         setScan(payload);
         setScanStale(false);
         onScan(payload);
-        window.localStorage.setItem("financial-titan-baidu-last-scan", JSON.stringify(payload));
+        try { await saveScanCache(payload); }
+        catch (storageError) {
+          setError(`本轮扫描已完成，可继续选题，但缓存保存失败，刷新后可能丢失本轮结果：${storageError instanceof Error ? storageError.message : String(storageError)}`);
+          notify("扫描完成，但未能持久保存；请先使用本轮结果，不要刷新页面");
+          return;
+        }
         notify(`今日扫描完成，形成 ${payload.topics.length} 个有效候选，其中 ${payload.mainTopicCount} 个达到主推门槛`);
       }
     } catch (error) {

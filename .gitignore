@@ -59,4 +59,5 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/data/strategy/
 /.runtime/

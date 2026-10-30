@@ -1,3 +1,15 @@
-2026/09/17-18:14:38.239 7ad0 Reusing MANIFEST D:\Users\cloud\Documents\金融巨子起号\data\douyin-browser\Default\Local Storage\leveldb/MANIFEST-000001
-2026/09/17-18:14:38.245 7ad0 Recovering log #28
-2026/09/17-18:14:38.248 7ad0 Reusing old log D:\Users\cloud\Documents\金融巨子起号\data\douyin-browser\Default\Local Storage\leveldb/000028.log 
+2026/10/28-22:04:40.448 6af8 Reusing MANIFEST D:\Users\cloud\Documents\金融巨子起号\data\douyin-browser\Default\Local Storage\leveldb/MANIFEST-000001
+2026/10/28-22:04:40.450 6af8 Recovering log #28
+2026/10/28-22:04:40.453 6af8 Reusing old log D:\Users\cloud\Documents\金融巨子起号\data\douyin-browser\Default\Local Storage\leveldb/000028.log 
+2026/10/28-22:05:12.087 13724 Level-0 table #32: started
+2026/10/28-22:05:12.093 13724 Level-0 table #32: 29871 bytes OK
+2026/10/28-22:05:12.095 13724 Delete type=0 #28
+2026/10/28-22:05:12.096 13724 Compacting 4@0 + 1@1 files
+2026/10/28-22:05:12.103 13724 Generated table #33@0: 95 keys, 12785 bytes
+2026/10/28-22:05:12.103 13724 Compacted 4@0 + 1@1 files => 12785 bytes
+2026/10/28-22:05:12.104 13724 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/10/28-22:05:12.105 13724 Delete type=2 #20
+2026/10/28-22:05:12.105 13724 Delete type=2 #22
+2026/10/28-22:05:12.105 13724 Delete type=2 #26
+2026/10/28-22:05:12.105 13724 Delete type=2 #29
+2026/10/28-22:05:12.105 13724 Delete type=2 #32

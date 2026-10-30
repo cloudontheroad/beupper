@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BaiduSourcePanel } from "../baidu-source-panel";
 import { CreatorWorkflow } from "../creator-workflow";
 import { ProjectLibrary } from "../project-library";
+import { loadScanCache } from "../scan-cache";
 
 type MobileTab = "热点" | "创作" | "资产";
 
@@ -34,12 +35,12 @@ export default function MobileApp() {
   }, []);
 
   useEffect(() => {
-    const savedScan = window.localStorage.getItem("financial-titan-baidu-last-scan");
-    if (savedScan) { try { setScan(JSON.parse(savedScan)); } catch {} }
+    let cancelled = false;
+    loadScanCache().then((savedScan) => { if (!cancelled && savedScan) setScan(savedScan); }).catch(() => {});
     const loadPublications = () => setPublications(JSON.parse(window.localStorage.getItem("financial-titan-publication-links") || "[]"));
     loadPublications();
     window.addEventListener("financial-titan-publications-updated", loadPublications);
-    return () => window.removeEventListener("financial-titan-publications-updated", loadPublications);
+    return () => { cancelled = true; window.removeEventListener("financial-titan-publications-updated", loadPublications); };
   }, []);
 
   const topics = scan?.topics || [];

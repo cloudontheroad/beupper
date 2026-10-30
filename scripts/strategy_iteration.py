@@ -46,6 +46,11 @@ def _sanitize_strategy(strategy):
         result[key] = clean[:6]
     return result
 
+SYSTEM += """
+重点分析选题的散户关注度。区别外部市场关注、品牌熟悉度、持仓/交易相关性与本账号受众偏好，四者不能混用。新闻独立站点数和权威媒体报道不是散户关注度；股价大涨不必然有大众关注；播放量是内容结果，不能倒过来当已验证股票热度。公开社区讨论、搜索流量来源、可用互动字段及历史同类作品是可用证据，未提供成交额、换手率、热榜、搜索指数时必须标缺失，不凭记忆补齐。对齐发布后时长、视频长度、留存与流量来源再比较，至少列出高低表现对照，说明选题需求和表达问题各有哪些证据。标题弱或低播放不能单独证明选题差。
+额外输出retailAttentionReview数组，每项包括comparison（具体样本对照与指标）、finding（关注度假设）、missing（缺少什么）、nextExperiment（只变选题关注度的实验）。从有支持的发现抽象topicDirectives，不写公司白名单，不要求宏观永远低于个股，不无证据调整固定权重。新作时效不足与样本少时只形成动态实验，不自动晋升稳定Skill。matchedProjectCount与全量作品数要区分，未匹配项目只用标题和指标。研究/成稿策略不得恢复人称次数、编号讲稿、固定秒数或结尾动作配额。
+"""
+
 PROMOTION_SYSTEM = """你是内容方法论审计员。输入包含多轮抖音策略迭代及每轮去重后的作品指标摘要。找出跨轮反复成立、可能晋升为稳定Skill的通用规则。
 
 候选必须满足：至少3轮独立迭代、跨度至少14天、至少8个不同作品、至少2类题材；不能由单条爆款驱动；移除最高与最低播放样本后仍有方向一致的证据；confidence必须为high。至少满足一项效果门槛：同类播放中位数提升30%以上、平均观看时长提升15%以上、5秒完播率提升10个百分点以上、或2秒跳出率下降10个百分点以上。缺失数据不得估算。规则不能绑定具体公司、数字或一次性热点，也不得削弱事实、合规和输出硬规则。
@@ -123,9 +128,13 @@ def generate_strategy_iteration(request_data):
     focus_records = request_data.get("focusRecords") or []
     if not api_key or not (records or focus_records):
         return {"ok": False, "status": 400, "error": "缺少 DeepSeek API Key 或本轮抖音逐稿数据。"}
-    payload = {"focus": focus[:5], "focusRecords": focus_records[:5], "previousStrategy": previous, "matchedDouyinPosts": records[:80]}
+    previous_compact = {key: previous.get(key) for key in ("summary", "topicDirectives", "researchDirectives", "scriptDirectives", "avoid")}
+    payload = {"focus": focus[:5], "focusRecords": focus_records[:5], "previousStrategy": previous_compact, "syncedDouyinPosts": records[:80]}
+    snapshot_dir = Path(__file__).resolve().parents[1] / "data" / "strategy"
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    (snapshot_dir / "latest-input.json").write_text(json.dumps({"receivedAt": datetime.now(timezone.utc).isoformat(), **payload}, ensure_ascii=False), encoding="utf-8")
     try:
-        client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com", timeout=httpx.Timeout(240.0, connect=30.0), max_retries=2)
+        client = openai.OpenAI(api_key=api_key, base_url="https://api.deepseek.com", timeout=httpx.Timeout(180.0, connect=20.0), max_retries=0)
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
@@ -140,6 +149,7 @@ def generate_strategy_iteration(request_data):
             "id": iteration_id,
             "createdAt": datetime.now(timezone.utc).isoformat(),
             "sampleCount": len(records),
+            "matchedProjectCount": sum(1 for record in records if record.get("projectMatched", True)),
             "focus": focus[:5],
             "sampleDigest": sample_digest(records),
             "model": getattr(response, "model", "") or model,
@@ -149,27 +159,34 @@ def generate_strategy_iteration(request_data):
         }
         all_iterations = [iteration, *[item for item in history if item.get("id") != iteration_id]][:50]
         promotion_candidates = []
+        promotion_warning = ""
+        (snapshot_dir / "latest-iteration.json").write_text(json.dumps(iteration, ensure_ascii=False), encoding="utf-8")
         valid_dates = []
         for item in all_iterations:
             try: valid_dates.append(datetime.fromisoformat(str(item.get("createdAt", "")).replace("Z", "+00:00")))
             except ValueError: pass
         if len(all_iterations) >= 3 and len(valid_dates) >= 3 and (max(valid_dates) - min(valid_dates)).days >= 14:
-            audit_response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "system", "content": PROMOTION_SYSTEM}, {"role": "user", "content": json.dumps({"iterations": all_iterations}, ensure_ascii=False)}],
-                max_tokens=6000, response_format={"type": "json_object"}, extra_body={"thinking": {"type": "disabled"}},
-            )
-            audited = parse_json(audit_response.choices[0].message.content or "")
-            promotion_candidates = eligible_candidates(audited.get("candidates") or [], all_iterations)
+            try:
+                audit_response = client.chat.completions.create(
+                    timeout=60.0,
+                    model=model,
+                    messages=[{"role": "system", "content": PROMOTION_SYSTEM}, {"role": "user", "content": json.dumps({"iterations": all_iterations}, ensure_ascii=False)}],
+                    max_tokens=6000, response_format={"type": "json_object"}, extra_body={"thinking": {"type": "disabled"}},
+                )
+                audited = parse_json(audit_response.choices[0].message.content or "")
+                promotion_candidates = eligible_candidates(audited.get("candidates") or [], all_iterations)
+            except Exception as error:
+                promotion_warning = f"本轮策略已生成并生效，晋升审核暂未完成：{type(error).__name__}"
         return {
             "ok": True,
             "iteration": iteration,
             "promotionCandidates": promotion_candidates,
+            "promotionWarning": promotion_warning,
         }
     except openai.APIStatusError as error:
         return {"ok": False, "status": error.status_code, "error": f"DeepSeek {error.status_code}：{error.message}"}
     except openai.APITimeoutError:
-        return {"ok": False, "status": 504, "error": "DeepSeek 策略复盘超过4分钟仍未返回。"}
+        return {"ok": False, "status": 504, "error": "DeepSeek 策略复盘超过3分钟仍未返回；已保留同步数据，可在策略迭代页重试。"}
     except openai.APIConnectionError as error:
         return {"ok": False, "status": 502, "error": f"连接 DeepSeek 失败：{error}"}
     except Exception as error:

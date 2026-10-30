@@ -150,14 +150,15 @@ def _with_browser(platform, callback):
     if not executable:
         raise RuntimeError("没有找到 Chrome 或 Edge")
     with sync_playwright() as playwright:
+        browser = None
         try:
             browser = playwright.chromium.connect_over_cdp(
                 f"http://127.0.0.1:{SOCIAL_DEBUG_PORTS[platform]}", timeout=2500
             )
-            if browser.contexts:
-                return callback(browser.contexts[0])
         except Exception:
             pass
+        if browser and browser.contexts:
+            return callback(browser.contexts[0])
         context = playwright.chromium.launch_persistent_context(
             str(_profile_dir(platform)), executable_path=str(executable), headless=True,
             args=["--disable-gpu", "--no-first-run"], viewport={"width": 1280, "height": 900},
@@ -255,23 +256,32 @@ def search_xueqiu(query, cookie, limit=20):
                 page.goto("https://xueqiu.com/", wait_until="domcontentloaded", timeout=30000)
                 cookies = context.cookies()
                 user_cookie = next((item for item in cookies if item.get("name") == "u"), None)
-                if not user_cookie or str(user_cookie.get("value") or "").strip() in ("", "0"):
-                    raise RuntimeError("雪球专属浏览器尚未形成有效用户登录态，请重新登录并完成可能出现的手机号或账号安全验证")
+                # Public search may work without a signed-in account. Test the
+                # capability rather than treating a cookie as proof of access.
                 targets = [
                     f"https://xueqiu.com/query/v1/search/status.json?q={quote(query)}&count={min(limit, 20)}&page=1",
                     f"https://xueqiu.com/statuses/search.json?source=all&q={quote(query)}&count={min(limit, 20)}&page=1&sort=time",
                 ]
-                result = page.evaluate("""async (urls) => {
+                try:
+                    result = page.evaluate("""async (urls) => {
                   const attempts = [];
                   for (const url of urls) {
-                    const response = await fetch(url, {credentials: 'include', headers: {'Accept': 'application/json'}});
+                    try {
+                    const response = await fetch(url, {credentials: 'include', signal: AbortSignal.timeout(10000), headers: {'Accept': 'application/json'}});
                     const text = await response.text();
                     attempts.push({status: response.status, text: text.slice(0, 160)});
-                    if (response.ok && text.trim().startsWith('{')) return {ok: true, payload: JSON.parse(text)};
+                    if (response.ok && text.trim().startsWith('{')) {
+                      const payload = JSON.parse(text);
+                      if (Array.isArray(payload.list)) return {ok: true, payload};
+                      attempts.push({error: 'JSON does not contain a post list'});
+                    }
+                    } catch (error) { attempts.push({error: String(error)}); }
                   }
                   return {ok: false, attempts};
-                }""", targets)
-                if not result.get("ok"):
+                    }""", targets)
+                except Exception as error:
+                    result = {"ok": False, "attempts": [{"error": str(error)[:120]}]}
+                if not result.get("ok") or not result.get("payload", {}).get("list"):
                     # Some Xueqiu accounts receive an HTML shell from both JSON
                     # endpoints. Fall back to the signed-in search page instead.
                     page.goto(f"https://xueqiu.com/k?q={quote(query)}", wait_until="domcontentloaded", timeout=30000)
@@ -299,7 +309,11 @@ def search_xueqiu(query, cookie, limit=20):
                         return {"list": rows}
                     attempts = result.get("attempts") or []
                     statuses = ",".join(str(item.get("status")) for item in attempts)
-                    raise RuntimeError(f"搜索接口未返回JSON且页面没有帖子（HTTP {statuses or 'unknown'}）")
+                    errors = "; ".join(str(item.get("error", "")) for item in attempts if item.get("error"))
+                    page_hint = _clean_text(page.locator("body").inner_text())[:120]
+                    if re.search(r"安全策略拦截|安全验证|访问异常|验证码", page_hint):
+                        raise RuntimeError("雪球安全策略拦截了搜索页；需要在雪球专属登录窗口完成正常验证后重试，当前不能取得用户观点")
+                    raise RuntimeError(f"接口及搜索页均未取得帖子（HTTP {statuses or 'unknown'}；{errors[:60]}）；页面：{page_hint or '空白或未渲染'}")
                 return result["payload"]
             payload = _with_browser("xueqiu", fetch_in_session)
             return _xueqiu_rows(payload, limit), ""
@@ -410,7 +424,7 @@ def search_twitter(query, auth_token, ct0, limit=20):
 
 
 def collect_social_sources(request_data):
-    queries = [str(item).strip() for item in request_data.get("queries", []) if str(item).strip()][:8]
+    queries = list(dict.fromkeys(str(item).strip() for item in request_data.get("queries", []) if str(item).strip()))[:8]
     if not queries:
         queries = ["全球股市 财报"]
     all_results = []
@@ -430,4 +444,9 @@ def collect_social_sources(request_data):
     statuses["xueqiu"]["ok"] = statuses["xueqiu"]["count"] > 0
     statuses["twitter"]["ok"] = statuses["twitter"]["count"] > 0
     unique = {item.get("url") or f"{item.get('platform')}:{item.get('title')}": item for item in all_results}
-    return {"ok": True, "references": list(unique.values()), "channels": statuses}
+    failed = [name for name, state in statuses.items() if state["error"] and not state["count"]]
+    success = any(state["count"] > 0 or not state["error"] for state in statuses.values())
+    return {"ok": success, "status": 200 if success else 502,
+            "partial": bool(failed) and success,
+            "error": "；".join(state["error"] for state in statuses.values() if state["error"]) if not success else "",
+            "references": list(unique.values()), "channels": statuses}

@@ -2,22 +2,35 @@
 
 import { useEffect, useState } from "react";
 import { apiUrl, readJsonResponse } from "./api-client";
+import { learnLatestDouyinSnapshot } from "./strategy-learning";
 
 export function StrategyIterationPanel({ notify }: { notify: (message: string) => void }) {
   const [items, setItems] = useState<any[]>([]);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [processing, setProcessing] = useState("");
+  const [learningStatus, setLearningStatus] = useState<any>(null);
 
   useEffect(() => {
     const load = () => {
       try {
         setItems(JSON.parse(window.localStorage.getItem("financial-titan-strategy-iterations") || "[]"));
         setCandidates(JSON.parse(window.localStorage.getItem("financial-titan-promotion-candidates") || "[]"));
+        setLearningStatus(JSON.parse(window.localStorage.getItem("financial-titan-learning-status") || "null"));
       }
       catch { setItems([]); }
     };
     load();
     window.addEventListener("financial-titan-strategy-updated", load);
+    try {
+    const snapshotAt = JSON.parse(window.localStorage.getItem("financial-titan-douyin-sync-snapshots") || "[]")[0]?.collectedAt;
+    const previousAttempt = JSON.parse(window.localStorage.getItem("financial-titan-learning-status") || "null");
+    const latestIteration = JSON.parse(window.localStorage.getItem("financial-titan-strategy-iterations") || "[]")[0];
+    if (snapshotAt && (!latestIteration || Date.parse(latestIteration.createdAt) < Date.parse(snapshotAt))
+      && previousAttempt?.snapshotAt !== snapshotAt && window.localStorage.getItem("financial-titan-deepseek-key")) {
+      setProcessing("learning");
+      learnLatestDouyinSnapshot().then(() => notify("最近同步的快照已补做策略学习")).catch(() => {}).finally(() => setProcessing(""));
+    }
+    } catch { /* Corrupt local snapshots must not break the strategy page. */ }
     return () => window.removeEventListener("financial-titan-strategy-updated", load);
   }, []);
 
@@ -49,7 +62,14 @@ export function StrategyIterationPanel({ notify }: { notify: (message: string) =
     <div className="strategyHero">
       <p className="eyebrow">DOUYIN FEEDBACK LOOP</p>
       <h2>策略迭代列表</h2>
-      <p>每次抖音创作者数据同步后，DeepSeek 都会用已匹配稿件的真实表现复盘，并把最新版策略注入选题、研究底稿和口播成稿。</p>
+      <p>同步后优先复盘新稿与变化稿，并用全量真实作品对照；未匹配项目只分析标题和后台数据，不虚构正文。学习成功后策略才会生效。</p>
+      <button className="primary" disabled={processing === "learning"} onClick={async () => {
+        setProcessing("learning");
+        try { await learnLatestDouyinSnapshot(); notify("已学习最近同步的数据，策略已更新"); }
+        catch (error) { notify(error instanceof Error ? error.message : "学习失败"); }
+        finally { setProcessing(""); }
+      }}>{processing === "learning" ? "正在学习…" : "学习最近同步的数据 / 重试"}</button>
+      {learningStatus && <p>最近学习：{learningStatus.state === "succeeded" ? "已完成" : learningStatus.state === "running" ? "请求已发起，等待结果；若页面已关闭可重试" : "未完成"} · {learningStatus.recordCount || 0} 条作品 · {new Date(learningStatus.updatedAt).toLocaleString("zh-CN")} {learningStatus.error || learningStatus.warning || ""}</p>}
     </div>
     <section className="promotionDesk">
       <div><p className="eyebrow">HUMAN APPROVAL</p><h2>待晋升规则</h2><span>只有通过3轮、14天、8篇作品、2类题材、去极值和指标门槛的规则才会进入这里；最终必须由你确认。</span></div>
@@ -65,11 +85,12 @@ export function StrategyIterationPanel({ notify }: { notify: (message: string) =
         {candidate.status === "rejected" && <small>拒绝原因：{candidate.rejectionReason || "未填写"}</small>}
       </article>)}</div>
     </section>
-    {!items.length && <div className="strategyEmpty"><b>尚无策略迭代</b><span>前往资产库同步抖音创作者数据。存在已匹配项目且已配置 DeepSeek Key 时，会自动生成第一版。</span></div>}
+    {!items.length && <div className="strategyEmpty"><b>尚无策略迭代</b><span>前往资产库同步抖音创作者数据。已配置 DeepSeek Key 时自动学习；已有快照可直接重试，无需重新抓取。</span></div>}
     <div className="strategyList">
       {items.map((item, index) => <article className="strategyEntry" key={item.id || index}>
         <header><div><span>第 {items.length - index} 次迭代</span><h3>{item.summary || "内容策略复盘"}</h3></div><time>{new Date(item.createdAt).toLocaleString("zh-CN")}</time></header>
-        <div className="strategyMeta"><span>{item.sampleCount || 0} 个匹配项目</span><span>{item.model || "DeepSeek"}</span><span>{item.receipt ? "API 已回执" : "无回执"}</span></div>
+        <div className="strategyMeta"><span>{item.sampleCount || 0} 条作品 · {item.matchedProjectCount ?? item.sampleCount ?? 0} 个匹配项目</span><span>{item.model || "DeepSeek"}</span><span>{item.receipt ? "API 已回执" : "无回执"}</span></div>
+        {item.retailAttentionReview?.length > 0 && <details open><summary>散户关注度与选题需求复盘</summary>{item.retailAttentionReview.map((review: any, i: number) => <div className="strategyInsight" key={i}><b>{review.finding}</b><span>样本对照：{review.comparison}</span><span>缺失证据：{review.missing}</span><span>下一轮实验：{review.nextExperiment}</span></div>)}</details>}
         {item.dataBoundary && <p className="strategyBoundary">数据边界：{item.dataBoundary}</p>}
         {!!item.focus?.length && <div className="strategyFocus"><b>本轮优先复盘 · {item.focus.length} 条新稿/变化稿</b>{item.focus.map((row: any, i: number) => {
           const review = (item.focusReviews || [])[i] || {};
